@@ -1,0 +1,204 @@
+---
+title: "Houston Crime Analysis Overview: Project 1"
+author: "Khadijah Erskine"
+output: ioslides_presentation
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(ggplot2) 
+library(dplyr) 
+library(readxl) 
+library(scales)
+library(forecast)
+library(lubridate)
+library(caret)
+crime_data <- read_excel("Houston.Crime.Stats.NIBRS2024.XLSX")
+```
+<style>
+pre {
+    line-height: 1.2em;
+    font-size: 8px;
+}
+</style>
+
+
+## Houston Texas Crime Analysis
+
+Project Overview: 
+This project analyzes crime data in various aspects such as crime types, zip codes, time of day, and locations. The goal is to answer several key questions related to crime patterns and trends. The code used in this project utilizes ggplot2, dplyr, and other R packages to create visualizations and analyze crime data.
+
+Questions:
+
+- What areas (zip codes) are more likely to experience specific crimes?
+- What time of day has the highest crime occurrences?
+- Do different premises (residential, commercial, street, etc.) show different crime patterns?
+- Is it possible to predict offense counts based on location and time?
+
+## Houston Texas Crime Data Set
+
+The Houston Crime Data set can be found at the following website.
+
+- https://www.houstontx.gov/police/cs/Monthly_Crime_Data_by_Street_and_Police_Beat.htm
+
+
+## Top 10 Most Common Crimes
+```{r Top 10 Most Common Crimes, echo=TRUE, message=FALSE, warning=FALSE, split=TRUE}
+crime_data %>%
+  count(NIBRSDescription, sort=TRUE) %>%
+  top_n(10) %>%
+  ggplot(aes(x=reorder(NIBRSDescription, n), y=n, fill=NIBRSDescription)) +
+  geom_bar(stat="identity") +
+  geom_text(aes(label = n), hjust = -0.2, size = 2) +
+  coord_flip() +
+  labs(title="Top 10 Most Common Crimes", x="Crime Type", y="Count") +
+  theme_classic() +
+  theme(legend.position="none")
+```
+
+
+## Top 10 ZIP CODES For Crimes
+
+```{r Top 10 ZIP CODES For Crimes, echo=TRUE, message=FALSE, warning=FALSE}
+crime_data %>%
+  count(ZIPCode, sort=TRUE) %>%
+  top_n(10) %>%
+  ggplot(aes(x=reorder(ZIPCode, n), y=n, fill = ZIPCode)) +
+  geom_bar(stat="identity",fill= "darkblue") +
+  geom_text(aes(label = n), hjust = -0.2, size = 2) +
+  coord_flip() +
+  labs(title="Top 10 ZIP CODES For Crimes", x="Zip Code", y="Count") +
+  theme_classic() +
+  theme(legend.position="none")
+```
+
+## Crime Frequency by Hour of the Day
+```{r Crime Frequency by Hour of the Day, echo=TRUE, message=FALSE, warning=FALSE}
+ggplot(crime_data, aes(x=RMSOccurrenceHour)) +
+  geom_histogram(binwidth=1, fill="blue", color="black", alpha=0.7) +
+  labs(title="Crime Frequency by Hour of the Day", x="Hour", y="Count") +
+  theme_classic()
+```
+
+
+
+## Top 10 Crimes in Zip Code 77036
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+crime_data %>%
+  filter(ZIPCode == "77036") %>%  
+  count(NIBRSDescription, sort = TRUE) %>%  
+  top_n(10) %>%  
+  ggplot(aes(x = reorder(NIBRSDescription, n), y = n, fill = NIBRSDescription)) +
+  geom_text(aes(label = n), hjust = -0.2, size = 2) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "", x = "Crime Type", y = "Count") +
+  theme_classic() +
+  theme(legend.position = "none")
+```
+
+## Monthly Crime Occurrences in 77036
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+crime_77036 <- crime_data %>%
+  filter(ZIPCode == 77036) %>%
+  mutate(MonthYear = format(as.Date(RMSOccurrenceDate, format = "%m/%d/%y"), "%b")) %>%  
+  group_by(MonthYear) %>%
+  summarise(TotalCrimes = sum(OffenseCount, na.rm = TRUE)) %>% 
+  mutate(MonthYear = factor(MonthYear, levels = month.abb)) 
+ggplot(crime_77036, aes(x = MonthYear, y = TotalCrimes)) +
+  geom_line(color = "blue", size= 1, group=1) +
+  geom_point(color = "blue") +
+  geom_text(aes(label = TotalCrimes), vjust = -0.5, color = "black", size = 2) +
+  labs(title = "Monthly Crime Occurrences in ZIP 77036", x = "Month", y = "Total Crimes") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +  
+  scale_y_continuous(limits = c(0, 1000), expand = c(0, 0))  
+```
+
+## Houston Monthly Crime
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+crime_per_month <- crime_data %>%
+  mutate(Month = format(as.Date(RMSOccurrenceDate, format = "%m/%d/%y"), "%b")) %>% 
+  group_by(Month) %>%
+  summarise(TotalCrimes = sum(OffenseCount, na.rm = TRUE)) %>%
+  mutate(Month = factor(Month, levels = month.abb))  
+ggplot(crime_per_month, aes(x = Month, y = TotalCrimes, fill= "pink")) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_text(aes(label = TotalCrimes), vjust = -0.5, color = "black", size = 2) +
+  labs(title = "Total Crime Occurrences by Month", x = "Month", y = "Total Crimes") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 0, hjust = 1))
+```
+## Crime Comp. Houston VS 77036
+
+```{r Crime Comp. Houston VS 77036, echo=TRUE, message=FALSE, warning=FALSE}
+
+crime_city <- crime_data %>%
+  mutate(MonthYear = format(as.Date(RMSOccurrenceDate, format = "%m/%d/%y"), "%Y-%m")) %>%  
+  group_by(MonthYear) %>%
+  summarise(TotalCrimes = sum(OffenseCount, na.rm = TRUE)) %>%
+  mutate(Location = "City of Houston")
+crime_77036 <- crime_data %>%
+  filter(ZIPCode == 77036) %>%
+  mutate(MonthYear = format(as.Date(RMSOccurrenceDate, format = "%m/%d/%y"), "%Y-%m")) %>%
+  group_by(MonthYear) %>%
+  summarise(TotalCrimes = sum(OffenseCount, na.rm = TRUE)) %>%
+  mutate(Location = "Zip Code 77036")
+crime_comparison <- bind_rows(crime_city, crime_77036)
+crime_comparison <- crime_comparison %>%
+  mutate(MonthYear = factor(MonthYear, levels = unique(MonthYear)))
+# Plot
+ggplot(crime_comparison, aes(x = MonthYear, y = TotalCrimes, color = Location, group = Location)) +
+  geom_line(size = 1) +
+  geom_bar(stat = "identity", aes(fill = Location), alpha = 0.5, position = "dodge") +
+  labs(title = "Total Crime: City vs. ZIP Code 77036", x = "Month", y = "Total Crimes") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+```
+
+```{r Graph Houston VS 77036}
+
+crime_city <- crime_data %>%
+  mutate(MonthYear = format(as.Date(RMSOccurrenceDate, format = "%m/%d/%y"), "%Y-%m")) %>%  
+  group_by(MonthYear) %>%
+  summarise(TotalCrimes = sum(OffenseCount, na.rm = TRUE)) %>%
+  mutate(Location = "City of Houston")
+crime_77036 <- crime_data %>%
+  filter(ZIPCode == 77036) %>%
+  mutate(MonthYear = format(as.Date(RMSOccurrenceDate, format = "%m/%d/%y"), "%Y-%m")) %>%
+  group_by(MonthYear) %>%
+  summarise(TotalCrimes = sum(OffenseCount, na.rm = TRUE)) %>%
+  mutate(Location = "Zip Code 77036")
+crime_comparison <- bind_rows(crime_city, crime_77036)
+crime_comparison <- crime_comparison %>%
+  mutate(MonthYear = factor(MonthYear, levels = unique(MonthYear)))
+ggplot(crime_comparison, aes(x = MonthYear, y = TotalCrimes, color = Location, group = Location)) +
+  geom_line(size = 1) +
+  geom_bar(stat = "identity", aes(fill = Location), alpha = 0.5, position = "dodge") +
+  labs(title = "Total Crime: City vs. ZIP Code 77036", x = "Month", y = "Total Crimes") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+```
+
+## Crime Summary Model
+```{r Crime Model, echo=TRUE, message=FALSE, warning=FALSE}
+crime_data$ZIPCode <- as.factor(crime_data$ZIPCode)
+crime_model_data <- crime_data %>%
+  select(OffenseCount, RMSOccurrenceHour, ZIPCode, Premise) %>%
+  mutate(ZIPCode = as.factor(ZIPCode), Premise = as.factor(Premise))
+bad_reg_model <- lm(OffenseCount ~ RMSOccurrenceHour + ZIPCode + Premise, data = crime_model_data)
+summary(crime_model_data)
+```
+```{r}
+bad_reg_model
+```
+
+## Crime Forecast
+
+Summary: The model predicts crime count based on hour, ZIP code, and premises.
+
+-The Crime Occurrence Hour is statistically significant but has a small effect on crime count.
+The R-squared is very low (0.7%), meaning this model does not explain crime trends well.
+-The model is statistically significant, but not useful to make accurate predictions.
+Next Steps: Learn better statistical methods to predict
